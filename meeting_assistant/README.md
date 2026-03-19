@@ -13,4 +13,25 @@ Over time, this module may include features for:
 
 ## Current Status
 
-This directory is scaffold only. It contains placeholders and minimal structure, but no real business logic yet.
+This module now includes a minimal first transcription flow using the OpenAI API. The rest of the meeting workflow remains scaffold-only.
+
+## Transcription
+
+Audio transcription is handled through the OpenAI transcription API using the `gpt-4o-transcribe` model by default.
+
+Supported formats:
+
+- `.mp3`
+- `.wav`
+- `.m4a`
+
+## Required Environment Variables
+
+- `OPENAI_API_KEY`
+- `OPENAI_TRANSCRIPTION_MODEL` (optional, defaults to `gpt-4o-transcribe`)
+
+## Example Usage
+
+```bash
+python -m meeting_assistant.transcriber path/to/audio.mp3
+```

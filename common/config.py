@@ -18,3 +18,8 @@ def get_env(name: str, default: str | None = None, required: bool = False) -> st
         raise ValueError(f"Missing required environment variable: {name}")
 
     return value
+
+
+def get_transcription_model() -> str:
+    """Return the configured OpenAI transcription model."""
+    return get_env("OPENAI_TRANSCRIPTION_MODEL", default="gpt-4o-transcribe") or "gpt-4o-transcribe"
