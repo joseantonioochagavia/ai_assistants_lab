@@ -13,7 +13,7 @@ Over time, this module may include features for:
 
 ## Current Status
 
-This module now includes a minimal first transcription flow using the OpenAI API. The rest of the meeting workflow remains scaffold-only.
+This module now includes a minimal transcription flow using the OpenAI API. It supports direct transcription for shorter files and chunked transcription for longer files. The rest of the meeting workflow remains scaffold-only.
 
 ## Transcription
 
@@ -25,13 +25,21 @@ Supported formats:
 - `.wav`
 - `.m4a`
 
+Longer files are automatically split into 20-minute chunks before transcription.
+
 ## Required Environment Variables
 
 - `OPENAI_API_KEY`
 - `OPENAI_TRANSCRIPTION_MODEL` (optional, defaults to `gpt-4o-transcribe`)
+
+## Local Requirement
+
+Chunked transcription uses `pydub` for audio loading and splitting. For formats such as `.mp3` and `.m4a`, make sure `ffmpeg` is installed on your machine.
 
 ## Example Usage
 
 ```bash
 python -m meeting_assistant.transcriber path/to/audio.mp3
 ```
+
+The command saves the transcription to `outputs/transcripts/<audio-file-name>.md` and prints a short success message with the saved path.

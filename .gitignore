@@ -6,5 +6,5 @@ venv/
 .DS_Store
 data/
 outputs/
-audio/
+audios/
 transcripts/
