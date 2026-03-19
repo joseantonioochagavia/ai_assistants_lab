@@ -10,6 +10,14 @@ This repository is a personal lab for building practical AI assistants that solv
 
 - `meeting_assistant`: scaffold for a future assistant that can help transcribe, summarize, and organize meeting outputs.
 
+## Setup
+
+Install the initial development environment with:
+
+```bash
+make install
+```
+
 ## Roadmap
 
 - Add the first working meeting assistant flow
