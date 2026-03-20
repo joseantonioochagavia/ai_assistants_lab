@@ -2,28 +2,70 @@
 
 A public Python repository for small, modular AI assistants focused on workflow automation.
 
-## Vision
+## Current Status
 
-This repository is a personal lab for building practical AI assistants that solve focused workflow problems in a clean, reusable, and maintainable way.
+The repository now includes a working first transcription flow for the `meeting_assistant` module using the OpenAI API. Longer audio files are handled by splitting them into chunks before transcription, and the final transcript is saved as markdown.
 
-## Current Modules
+## Repository Structure
 
-- `meeting_assistant`: scaffold for a future assistant that can help transcribe, summarize, and organize meeting outputs.
+- `common/`: shared configuration helpers and OpenAI client creation
+- `meeting_assistant/`: the first assistant module, currently focused on transcription
+- `docs/prompts/`: prompt files used to drive repository iterations
+- `scripts/`: setup helpers for local development
 
 ## Setup
 
-Install the initial development environment with:
+Install the project dependencies with:
 
 ```bash
 make install
 ```
 
-## Roadmap
+Or directly with:
 
-- Add the first working meeting assistant flow
-- Introduce shared utilities for LLM access and configuration
-- Expand the lab with additional workflow-oriented assistants
-- Add tests and lightweight developer tooling as modules mature
+```bash
+pip install -r requirements.txt
+```
+
+Create a local `.env` file based on `.env.example` and set:
+
+- `OPENAI_API_KEY`
+- `OPENAI_TRANSCRIPTION_MODEL` (optional, defaults to `gpt-4o-transcribe`)
+
+For chunked transcription of formats such as `.mp3` and `.m4a`, make sure `ffmpeg` is installed locally.
+
+## Meeting Assistant
+
+The `meeting_assistant` module currently supports audio transcription through the OpenAI transcription API.
+
+Current behavior:
+
+- supports `.mp3`, `.wav`, and `.m4a`
+- uses direct transcription for shorter audio files
+- automatically splits longer audio into 20-minute chunks
+- saves the final result to `outputs/transcripts/<audio-file-name>.md`
+
+Example:
+
+```bash
+python -m meeting_assistant.transcriber path/to/audio.m4a
+```
+
+## Tests
+
+The repository includes lightweight unit tests for the transcription flow. Run them with:
+
+```bash
+python -m unittest
+```
+
+## Direction
+
+This repository remains intentionally simple:
+
+- modular assistant-specific directories
+- minimal shared abstractions
+- incremental feature growth driven by real workflows
 
 ## Repository Philosophy
 
