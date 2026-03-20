@@ -4,7 +4,7 @@ A public Python repository for small, modular AI assistants focused on workflow 
 
 ## Current Status
 
-The repository now includes a working first transcription flow for the `meeting_assistant` module using the OpenAI API. Longer audio files are handled by splitting them into chunks before transcription, and the final transcript is saved as markdown.
+The repository now includes a working first transcription flow for the `meeting_assistant` module using the OpenAI API. Audio is lightly preprocessed before transcription, longer recordings are split into chunks, raw transcripts are cleaned into readable text, and both versions are saved as markdown.
 
 ## Repository Structure
 
@@ -41,14 +41,18 @@ The `meeting_assistant` module currently supports audio transcription through th
 Current behavior:
 
 - supports `.mp3`, `.wav`, and `.m4a`
+- preprocesses audio into a mono 16 kHz WAV before transcription
 - uses direct transcription for shorter audio files
 - automatically splits longer audio into 20-minute chunks
-- saves the final result to `outputs/transcripts/<audio-file-name>.md`
+- cleans the raw transcript with `gpt-4.1-mini` without summarizing it
+- saves raw transcripts to `meeting_assistant/outputs/transcripts/raw/<audio-file-name>.md`
+- saves cleaned transcripts to `meeting_assistant/outputs/transcripts/clean/<audio-file-name>.md`
+- saves chunk-level and merged debug transcripts to `meeting_assistant/outputs/transcripts/debug/`
 
 Example:
 
 ```bash
-python -m meeting_assistant.transcriber path/to/audio.m4a
+python -m meeting_assistant.app path/to/audio.m4a
 ```
 
 ## Tests

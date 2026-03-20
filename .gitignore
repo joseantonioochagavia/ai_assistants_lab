@@ -5,6 +5,6 @@ __pycache__/
 venv/
 .DS_Store
 data/
-outputs/
-audios/
-transcripts/
+meeting_assistant/audios/
+meeting_assistant/outputs/
+    

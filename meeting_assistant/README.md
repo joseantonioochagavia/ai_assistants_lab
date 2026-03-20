@@ -13,11 +13,12 @@ Over time, this module may include features for:
 
 ## Current Status
 
-This module now includes a minimal transcription flow using the OpenAI API. It supports direct transcription for shorter files and chunked transcription for longer files. The rest of the meeting workflow remains scaffold-only.
+This module now includes a minimal transcription flow using the OpenAI API. It lightly preprocesses audio before transcription, supports direct transcription for shorter files, uses chunked transcription for longer files, and cleans the raw transcript into a readable version without summarizing it. The rest of the meeting workflow remains scaffold-only.
 
 ## Transcription
 
 Audio transcription is handled through the OpenAI transcription API using the `gpt-4o-transcribe` model by default.
+Raw transcription cleaning uses `gpt-4.1-mini`.
 
 Supported formats:
 
@@ -25,7 +26,12 @@ Supported formats:
 - `.wav`
 - `.m4a`
 
+Before transcription, the audio is converted to a mono 16 kHz WAV to give the API a consistent input format.
+
 Longer files are automatically split into 20-minute chunks before transcription.
+Chunked transcription uses overlap between chunks and keeps debug outputs for inspection.
+
+After transcription, the raw text is cleaned and normalized while preserving meaning.
 
 ## Required Environment Variables
 
@@ -39,7 +45,7 @@ Chunked transcription uses `pydub` for audio loading and splitting. For formats 
 ## Example Usage
 
 ```bash
-python -m meeting_assistant.transcriber path/to/audio.mp3
+python -m meeting_assistant.app path/to/audio.mp3
 ```
 
-The command saves the transcription to `outputs/transcripts/<audio-file-name>.md` and prints a short success message with the saved path.
+The command saves the raw transcription to `meeting_assistant/outputs/transcripts/raw/<audio-file-name>.md`, the cleaned transcription to `meeting_assistant/outputs/transcripts/clean/<audio-file-name>.md`, chunk-level debug outputs to `meeting_assistant/outputs/transcripts/debug/`, and prints a short success message with the cleaned output path.
