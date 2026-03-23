@@ -10,13 +10,11 @@ from pathlib import Path
 from common.config import get_transcription_model
 from common.llm_clients import create_openai_client
 from meeting_assistant.preprocess import _split_audio_into_chunks, _validate_audio_path
-from meeting_assistant.save import (
-    save_chunk_debug_transcription,
-    save_merged_raw_debug_transcription,
-)
+from meeting_assistant.save import DebugArtifacts, save_chunk_debug_transcription
 
 
 MAX_DIRECT_TRANSCRIPTION_SECONDS = 1200
+CHUNK_TRANSCRIPTION_SECONDS = 600
 MIN_OVERLAP_CHARACTERS = 140
 MIN_DUPLICATE_BLOCK_CHARACTERS = 220
 MAX_OVERLAP_LINES = 40
@@ -151,34 +149,68 @@ def transcribe_audio(file_path: str) -> str:
     return response.text
 
 
-def transcribe_audio_in_chunks(file_path: str) -> str:
-    """Transcribe an audio file by splitting it into smaller chunks first."""
-    audio_path = _validate_audio_path(file_path)
+def _transcribe_chunk_sequence(
+    chunk_metadata,
+    *,
+    source_file_path: str,
+    debug_artifacts: DebugArtifacts | None = None,
+) -> str:
+    """Transcribe a sequence of chunk files and optionally persist debug outputs."""
     chunk_transcriptions: list[str] = []
 
-    with tempfile.TemporaryDirectory(prefix="meeting-assistant-chunks-") as temp_dir:
-        chunk_metadata = _split_audio_into_chunks(
-            str(audio_path),
-            chunk_duration_seconds=MAX_DIRECT_TRANSCRIPTION_SECONDS,
-            output_dir=Path(temp_dir),
-        )
+    for chunk in chunk_metadata:
+        try:
+            chunk_transcription = transcribe_audio(str(chunk.path)).strip()
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"Failed during transcription of chunk {chunk.index}: {exc}"
+            ) from exc
 
-        for chunk in chunk_metadata:
-            try:
-                chunk_transcription = transcribe_audio(str(chunk.path)).strip()
-            except RuntimeError as exc:
-                raise RuntimeError(
-                    f"Failed during transcription of chunk {chunk.index}: {exc}"
-                ) from exc
+        if debug_artifacts is not None:
             save_chunk_debug_transcription(
-                str(audio_path),
+                source_file_path,
                 chunk.index,
                 chunk.start_ms,
                 chunk.end_ms,
                 chunk_transcription,
+                output_dir=debug_artifacts.chunk_transcript_dir,
+                chunk_file_name=chunk.path.name,
             )
-            chunk_transcriptions.append(chunk_transcription)
 
-    merged_transcription = merge_chunk_transcriptions(chunk_transcriptions)
-    save_merged_raw_debug_transcription(str(audio_path), merged_transcription)
-    return merged_transcription
+        chunk_transcriptions.append(chunk_transcription)
+
+    return merge_chunk_transcriptions(chunk_transcriptions)
+
+
+def transcribe_audio_in_chunks(
+    file_path: str,
+    *,
+    debug_source_path: str | None = None,
+    debug_artifacts: DebugArtifacts | None = None,
+) -> str:
+    """Transcribe an audio file by splitting it into smaller chunks first."""
+    audio_path = _validate_audio_path(file_path)
+    source_file_path = debug_source_path or str(audio_path)
+
+    if debug_artifacts is not None:
+        chunk_metadata = _split_audio_into_chunks(
+            str(audio_path),
+            chunk_duration_seconds=CHUNK_TRANSCRIPTION_SECONDS,
+            output_dir=debug_artifacts.chunk_audio_dir,
+        )
+        return _transcribe_chunk_sequence(
+            chunk_metadata,
+            source_file_path=source_file_path,
+            debug_artifacts=debug_artifacts,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="meeting-assistant-chunks-") as temp_dir:
+        chunk_metadata = _split_audio_into_chunks(
+            str(audio_path),
+            chunk_duration_seconds=CHUNK_TRANSCRIPTION_SECONDS,
+            output_dir=Path(temp_dir),
+        )
+        return _transcribe_chunk_sequence(
+            chunk_metadata,
+            source_file_path=source_file_path,
+        )

@@ -7,4 +7,5 @@ venv/
 data/
 meeting_assistant/audios/
 meeting_assistant/outputs/
+notebooks/
     

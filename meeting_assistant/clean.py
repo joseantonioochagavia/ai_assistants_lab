@@ -14,7 +14,7 @@ Rules:
 - Preserve the original meaning exactly
 - Do NOT summarize
 - Do NOT remove important content
-- Do NOT add new information
+- Do NOT add new information.
 
 You must:
 - Fix grammar and spelling

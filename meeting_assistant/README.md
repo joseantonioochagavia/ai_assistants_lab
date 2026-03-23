@@ -13,7 +13,7 @@ Over time, this module may include features for:
 
 ## Current Status
 
-This module now includes a minimal transcription flow using the OpenAI API. It lightly preprocesses audio before transcription, supports direct transcription for shorter files, uses chunked transcription for longer files, and cleans the raw transcript into a readable version without summarizing it. The rest of the meeting workflow remains scaffold-only.
+This module now includes a minimal transcription flow using the OpenAI API. It supports direct transcription for shorter files, uses chunked transcription for longer files, and cleans the raw transcript into a readable version without summarizing it. The rest of the meeting workflow remains scaffold-only.
 
 ## Transcription
 
@@ -26,10 +26,10 @@ Supported formats:
 - `.wav`
 - `.m4a`
 
-Before transcription, the audio is converted to a mono 16 kHz WAV to give the API a consistent input format.
+The transcription API now receives the original source audio. When `--debug` is enabled, the pipeline also writes a mono 16 kHz WAV comparison copy so you can inspect whether preprocessing is changing the material.
 
-Longer files are automatically split into 20-minute chunks before transcription.
-Chunked transcription uses overlap between chunks and keeps debug outputs for inspection.
+Longer files are automatically split into 10-minute chunks before transcription.
+Use `--debug` to persist a full pipeline trace, including original audio, preprocessed audio, chunk audio, raw chunk transcripts, merged raw transcript, and cleaned transcript.
 
 After transcription, the raw text is cleaned and normalized while preserving meaning.
 
@@ -48,4 +48,8 @@ Chunked transcription uses `pydub` for audio loading and splitting. For formats 
 python -m meeting_assistant.app path/to/audio.mp3
 ```
 
-The command saves the raw transcription to `meeting_assistant/outputs/transcripts/raw/<audio-file-name>.md`, the cleaned transcription to `meeting_assistant/outputs/transcripts/clean/<audio-file-name>.md`, chunk-level debug outputs to `meeting_assistant/outputs/transcripts/debug/`, and prints a short success message with the cleaned output path.
+```bash
+python -m meeting_assistant.app path/to/audio.mp3 --debug
+```
+
+The command saves the raw transcription to `meeting_assistant/outputs/transcripts/raw/<audio-file-name>.md`, the cleaned transcription to `meeting_assistant/outputs/transcripts/clean/<audio-file-name>.md`, and when `--debug` is enabled it writes a step-by-step artifact tree under `meeting_assistant/outputs/transcripts/debug/<audio-file-name>/`.

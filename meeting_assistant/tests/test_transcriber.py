@@ -201,6 +201,14 @@ class TranscriberTests(unittest.TestCase):
             temp_path = Path(temp_dir)
             audio_path = temp_path / "sample.wav"
             audio_path.write_bytes(b"audio")
+            debug_artifacts = save.DebugArtifacts(
+                root_dir=temp_path / "debug" / "sample",
+                original_audio_dir=temp_path / "debug" / "sample" / "audio" / "original",
+                preprocessed_audio_dir=temp_path / "debug" / "sample" / "audio" / "preprocessed",
+                chunk_audio_dir=temp_path / "debug" / "sample" / "audio" / "chunks",
+                transcript_dir=temp_path / "debug" / "sample" / "transcripts",
+                chunk_transcript_dir=temp_path / "debug" / "sample" / "transcripts" / "chunks",
+            )
             chunk_metadata = [
                 preprocess.AudioChunk(
                     index=1,
@@ -232,12 +240,12 @@ class TranscriberTests(unittest.TestCase):
                 patch.object(transcribe, "_split_audio_into_chunks", return_value=chunk_metadata),
                 patch.object(transcribe, "transcribe_audio", side_effect=chunk_transcriptions),
                 patch.object(transcribe, "save_chunk_debug_transcription") as save_chunk_debug_mock,
-                patch.object(
-                    transcribe,
-                    "save_merged_raw_debug_transcription",
-                ) as save_merged_debug_mock,
             ):
-                merged_transcription = transcribe.transcribe_audio_in_chunks(str(audio_path))
+                merged_transcription = transcribe.transcribe_audio_in_chunks(
+                    str(audio_path),
+                    debug_source_path=str(audio_path),
+                    debug_artifacts=debug_artifacts,
+                )
 
         self.assertIn(
             "Primera idea con bastante detalle para superar el umbral del merge.",
@@ -248,16 +256,33 @@ class TranscriberTests(unittest.TestCase):
             merged_transcription,
         )
         self.assertEqual(2, save_chunk_debug_mock.call_count)
-        save_merged_debug_mock.assert_called_once_with(str(audio_path), merged_transcription)
+        self.assertEqual(
+            [
+                call(
+                    str(audio_path),
+                    1,
+                    0,
+                    20000,
+                    chunk_transcriptions[0],
+                    output_dir=debug_artifacts.chunk_transcript_dir,
+                    chunk_file_name="chunk_001.wav",
+                ),
+                call(
+                    str(audio_path),
+                    2,
+                    15000,
+                    35000,
+                    chunk_transcriptions[1],
+                    output_dir=debug_artifacts.chunk_transcript_dir,
+                    chunk_file_name="chunk_002.wav",
+                ),
+            ],
+            save_chunk_debug_mock.call_args_list,
+        )
 
     def test_transcribe_audio_file_uses_direct_transcription_for_short_audio(self) -> None:
         with (
             patch.object(app, "_validate_audio_path", return_value=Path("sample.mp3")),
-            patch.object(
-                app,
-                "preprocess_audio_for_transcription",
-                return_value=Path("/tmp/sample_preprocessed.wav"),
-            ) as preprocess_mock,
             patch.object(app, "get_audio_duration_seconds", return_value=600),
             patch.object(app, "transcribe_audio", return_value="short transcript") as direct_mock,
             patch.object(
@@ -275,14 +300,14 @@ class TranscriberTests(unittest.TestCase):
                 "save_transcription_markdown",
                 side_effect=[Path("/tmp/raw.md"), Path("/tmp/clean.md")],
             ) as save_mock,
+            patch.object(app, "preprocess_audio_for_transcription") as preprocess_mock,
         ):
             transcription, output_path = app.transcribe_audio_file("sample.mp3")
 
         self.assertEqual("clean short transcript", transcription)
         self.assertEqual(Path("/tmp/clean.md"), output_path)
-        preprocess_mock.assert_called_once()
-        self.assertEqual("sample.mp3", preprocess_mock.call_args.args[0])
-        direct_mock.assert_called_once_with("/tmp/sample_preprocessed.wav")
+        preprocess_mock.assert_not_called()
+        direct_mock.assert_called_once_with("sample.mp3")
         clean_mock.assert_called_once_with("short transcript")
         chunked_mock.assert_not_called()
         self.assertEqual(
@@ -300,11 +325,6 @@ class TranscriberTests(unittest.TestCase):
     def test_transcribe_audio_file_uses_chunked_transcription_for_long_audio(self) -> None:
         with (
             patch.object(app, "_validate_audio_path", return_value=Path("sample.mp3")),
-            patch.object(
-                app,
-                "preprocess_audio_for_transcription",
-                return_value=Path("/tmp/sample_preprocessed.wav"),
-            ) as preprocess_mock,
             patch.object(app, "get_audio_duration_seconds", return_value=1800),
             patch.object(app, "transcribe_audio") as direct_mock,
             patch.object(
@@ -322,16 +342,102 @@ class TranscriberTests(unittest.TestCase):
                 "save_transcription_markdown",
                 side_effect=[Path("/tmp/raw.md"), Path("/tmp/clean.md")],
             ) as save_mock,
+            patch.object(app, "preprocess_audio_for_transcription") as preprocess_mock,
         ):
             transcription, output_path = app.transcribe_audio_file("sample.mp3")
 
         self.assertEqual("clean chunked transcript", transcription)
         self.assertEqual(Path("/tmp/clean.md"), output_path)
-        preprocess_mock.assert_called_once()
-        self.assertEqual("sample.mp3", preprocess_mock.call_args.args[0])
+        preprocess_mock.assert_not_called()
         direct_mock.assert_not_called()
-        chunked_mock.assert_called_once_with("/tmp/sample_preprocessed.wav")
+        chunked_mock.assert_called_once_with("sample.mp3")
         clean_mock.assert_called_once_with("raw chunked transcript")
+        self.assertEqual(
+            [
+                call(
+                    "sample.mp3",
+                    "raw chunked transcript",
+                    output_dir=app.RAW_OUTPUTS_DIR,
+                ),
+                call(
+                    "sample.mp3",
+                    "clean chunked transcript",
+                    output_dir=app.CLEAN_OUTPUTS_DIR,
+                ),
+            ],
+            save_mock.call_args_list,
+        )
+
+    def test_transcribe_audio_file_debug_mode_saves_pipeline_artifacts(self) -> None:
+        debug_artifacts = save.DebugArtifacts(
+            root_dir=Path("/tmp/debug/sample"),
+            original_audio_dir=Path("/tmp/debug/sample/audio/original"),
+            preprocessed_audio_dir=Path("/tmp/debug/sample/audio/preprocessed"),
+            chunk_audio_dir=Path("/tmp/debug/sample/audio/chunks"),
+            transcript_dir=Path("/tmp/debug/sample/transcripts"),
+            chunk_transcript_dir=Path("/tmp/debug/sample/transcripts/chunks"),
+        )
+
+        with (
+            patch.object(app, "_validate_audio_path", return_value=Path("sample.mp3")),
+            patch.object(app, "prepare_debug_artifacts", return_value=debug_artifacts) as prepare_mock,
+            patch.object(app, "get_debug_artifacts", return_value=debug_artifacts),
+            patch.object(app, "save_debug_audio_artifact") as save_audio_debug_mock,
+            patch.object(
+                app,
+                "preprocess_audio_for_transcription",
+                return_value=Path("/tmp/sample_preprocessed.wav"),
+            ) as preprocess_mock,
+            patch.object(app, "get_audio_duration_seconds", return_value=1800),
+            patch.object(app, "transcribe_audio") as direct_mock,
+            patch.object(
+                app,
+                "transcribe_audio_in_chunks",
+                return_value="raw chunked transcript",
+            ) as chunked_mock,
+            patch.object(
+                app,
+                "clean_transcription",
+                return_value="clean chunked transcript",
+            ) as clean_mock,
+            patch.object(app, "save_merged_raw_debug_transcription") as save_merged_debug_mock,
+            patch.object(app, "save_cleaned_debug_transcription") as save_cleaned_debug_mock,
+            patch.object(
+                app,
+                "save_transcription_markdown",
+                side_effect=[Path("/tmp/raw.md"), Path("/tmp/clean.md")],
+            ) as save_mock,
+        ):
+            transcription, output_path = app.transcribe_audio_file("sample.mp3", debug=True)
+
+        self.assertEqual("clean chunked transcript", transcription)
+        self.assertEqual(Path("/tmp/clean.md"), output_path)
+        prepare_mock.assert_called_once_with("sample.mp3")
+        save_audio_debug_mock.assert_called_once_with(
+            Path("sample.mp3"),
+            debug_artifacts.original_audio_dir,
+        )
+        preprocess_mock.assert_called_once_with(
+            "sample.mp3",
+            output_dir=debug_artifacts.preprocessed_audio_dir,
+        )
+        direct_mock.assert_not_called()
+        chunked_mock.assert_called_once_with(
+            "sample.mp3",
+            debug_source_path="sample.mp3",
+            debug_artifacts=debug_artifacts,
+        )
+        clean_mock.assert_called_once_with("raw chunked transcript")
+        save_merged_debug_mock.assert_called_once_with(
+            "sample.mp3",
+            "raw chunked transcript",
+            output_path=debug_artifacts.transcript_dir / "merged_raw.md",
+        )
+        save_cleaned_debug_mock.assert_called_once_with(
+            "sample.mp3",
+            "clean chunked transcript",
+            output_path=debug_artifacts.transcript_dir / "cleaned.md",
+        )
         self.assertEqual(
             [
                 call(
@@ -371,6 +477,26 @@ class TranscriberTests(unittest.TestCase):
                 "hello world\n",
                 output_path.read_text(encoding="utf-8"),
             )
+
+    def test_prepare_debug_artifacts_creates_clean_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            audio_path = temp_path / "sample.mp3"
+            audio_path.write_bytes(b"audio")
+            debug_root = temp_path / "outputs" / "debug"
+            stale_file = debug_root / "sample" / "stale.txt"
+            stale_file.parent.mkdir(parents=True, exist_ok=True)
+            stale_file.write_text("stale", encoding="utf-8")
+
+            with patch.object(save, "DEBUG_OUTPUTS_DIR", debug_root):
+                debug_artifacts = save.prepare_debug_artifacts(str(audio_path))
+
+            self.assertFalse(stale_file.exists())
+            self.assertTrue(debug_artifacts.original_audio_dir.is_dir())
+            self.assertTrue(debug_artifacts.preprocessed_audio_dir.is_dir())
+            self.assertTrue(debug_artifacts.chunk_audio_dir.is_dir())
+            self.assertTrue(debug_artifacts.transcript_dir.is_dir())
+            self.assertTrue(debug_artifacts.chunk_transcript_dir.is_dir())
 
 
 if __name__ == "__main__":
