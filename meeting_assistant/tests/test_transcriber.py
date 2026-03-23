@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,17 @@ from meeting_assistant import app, clean, preprocess, save, transcribe
 
 
 class TranscriberTests(unittest.TestCase):
+    def test_resolve_audio_input_uses_module_audios_dir_for_bare_file_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audios_dir = Path(temp_dir)
+            audio_path = audios_dir / "sample.mp3"
+            audio_path.write_bytes(b"audio")
+
+            with patch.object(app, "AUDIOS_DIR", audios_dir):
+                resolved_path = app._resolve_audio_input("sample.mp3")
+
+        self.assertEqual(audio_path, resolved_path)
+
     def test_clean_transcription_returns_empty_string_for_empty_input(self) -> None:
         self.assertEqual("", clean.clean_transcription(""))
         self.assertEqual("", clean.clean_transcription("   "))
@@ -453,6 +465,77 @@ class TranscriberTests(unittest.TestCase):
             ],
             save_mock.call_args_list,
         )
+
+    def test_transcribe_multiple_audio_files_preserves_input_order_and_reports_failures(self) -> None:
+        resolved_paths = {
+            "first.mp3": Path("/tmp/first.mp3"),
+            "broken.mp3": Path("/tmp/broken.mp3"),
+        }
+
+        def resolve_audio_input(file_path: str) -> Path:
+            if file_path == "missing.mp3":
+                raise FileNotFoundError("Audio file not found: missing.mp3")
+            return resolved_paths[file_path]
+
+        def transcribe_file(file_path: str, *, debug: bool = False) -> tuple[str, Path]:
+            self.assertTrue(debug)
+            if file_path == str(resolved_paths["broken.mp3"]):
+                raise RuntimeError("OpenAI transcription failed: rate limit")
+            return "clean transcript", Path(f"/tmp/{Path(file_path).stem}.md")
+
+        with (
+            patch.object(app, "_resolve_audio_input", side_effect=resolve_audio_input),
+            patch.object(app, "transcribe_audio_file", side_effect=transcribe_file) as transcribe_mock,
+        ):
+            successes, failures = app.transcribe_multiple_audio_files(
+                ["first.mp3", "missing.mp3", "broken.mp3"],
+                debug=True,
+                max_workers=3,
+            )
+
+        self.assertEqual(
+            [("first.mp3", Path("/tmp/first.mp3"), Path("/tmp/first.md"))],
+            successes,
+        )
+        self.assertEqual(
+            ["missing.mp3", "broken.mp3"],
+            [file_path for file_path, _ in failures],
+        )
+        self.assertEqual(
+            "Audio file not found: missing.mp3",
+            str(failures[0][1]),
+        )
+        self.assertEqual(
+            "OpenAI transcription failed: rate limit",
+            str(failures[1][1]),
+        )
+        transcribe_mock.assert_has_calls(
+            [
+                call(str(resolved_paths["first.mp3"]), debug=True),
+                call(str(resolved_paths["broken.mp3"]), debug=True),
+            ],
+            any_order=True,
+        )
+
+    def test_main_supports_multiple_audio_inputs(self) -> None:
+        stdout = io.StringIO()
+
+        with (
+            patch.object(
+                app,
+                "transcribe_multiple_audio_files",
+                return_value=[
+                    [("first.mp3", Path("/tmp/first.mp3"), Path("/tmp/first.md"))],
+                    [],
+                ],
+            ),
+            patch("sys.argv", ["meeting_assistant.app", "first.mp3", "second.mp3", "--workers", "2"]),
+            patch("sys.stdout", stdout),
+        ):
+            exit_code = app.main()
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("first.mp3: transcription saved to /tmp/first.md", stdout.getvalue())
 
     def test_save_transcription_markdown_writes_expected_content(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
