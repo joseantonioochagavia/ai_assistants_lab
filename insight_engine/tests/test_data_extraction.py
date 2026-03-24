@@ -33,7 +33,10 @@ class DataExtractionTests(unittest.TestCase):
             choices=[
                 MagicMock(
                     message=MagicMock(
-                        content='{"dolores": ["Mucho trabajo manual", "Falta de trazabilidad"]}'
+                        content=(
+                            '{"dolores": ["Mucho trabajo manual", "Falta de trazabilidad"], '
+                            '"temas_clave": ["Trazabilidad", "Procesos manuales"]}'
+                        )
                     )
                 )
             ]
@@ -43,10 +46,23 @@ class DataExtractionTests(unittest.TestCase):
             payload = data_extraction.extract_structured_fields("Transcript text")
 
         self.assertEqual(
-            {"dolores": ["Mucho trabajo manual", "Falta de trazabilidad"]},
+            {
+                "dolores": ["Mucho trabajo manual", "Falta de trazabilidad"],
+                "temas_clave": ["Trazabilidad", "Procesos manuales"],
+            },
             payload,
         )
         client_mock.chat.completions.create.assert_called_once()
+
+    def test_parse_structured_response_accepts_spaced_topics_key(self) -> None:
+        payload = data_extraction._parse_structured_response(
+            '{"dolores": ["Dolor"], "temas clave": ["Tema"]}'
+        )
+
+        self.assertEqual(
+            {"dolores": ["Dolor"], "temas_clave": ["Tema"]},
+            payload,
+        )
 
     def test_extract_structured_data_iterates_markdown_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -64,16 +80,24 @@ class DataExtractionTests(unittest.TestCase):
                 data_extraction,
                 "extract_structured_fields",
                 side_effect=[
-                    {"dolores": ["Dolor A"]},
-                    {"dolores": ["Dolor B"]},
+                    {"dolores": ["Dolor A"], "temas_clave": ["Tema A"]},
+                    {"dolores": ["Dolor B"], "temas_clave": ["Tema B"]},
                 ],
             ) as extract_mock:
                 structured_data = data_extraction.extract_structured_data(transcripts_dir)
 
         self.assertEqual(
             [
-                {"reunion": "A Meeting", "dolores": ["Dolor A"]},
-                {"reunion": "B Meeting", "dolores": ["Dolor B"]},
+                {
+                    "reunion": "A Meeting",
+                    "dolores": ["Dolor A"],
+                    "temas_clave": ["Tema A"],
+                },
+                {
+                    "reunion": "B Meeting",
+                    "dolores": ["Dolor B"],
+                    "temas_clave": ["Tema B"],
+                },
             ],
             structured_data,
         )
@@ -86,7 +110,13 @@ class DataExtractionTests(unittest.TestCase):
             patch.object(
                 data_extraction,
                 "extract_structured_data",
-                return_value=[{"reunion": "Samuel Hurtado", "dolores": ["Falta de tiempo"]}],
+                return_value=[
+                    {
+                        "reunion": "Samuel Hurtado",
+                        "dolores": ["Falta de tiempo"],
+                        "temas_clave": ["Planificacion"],
+                    }
+                ],
             ),
             patch("sys.argv", ["insight_engine.data_extraction", "/tmp/transcripts"]),
             patch("sys.stdout", stdout),
@@ -96,6 +126,7 @@ class DataExtractionTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertIn('"reunion": "Samuel Hurtado"', stdout.getvalue())
         self.assertIn('"dolores": [', stdout.getvalue())
+        self.assertIn('"temas_clave": [', stdout.getvalue())
 
 
 if __name__ == "__main__":

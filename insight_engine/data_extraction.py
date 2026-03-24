@@ -18,30 +18,66 @@ DEFAULT_TRANSCRIPTS_DIR = (
     / "clean"
 )
 DEFAULT_EXTRACTION_MODEL = "gpt-4.1-mini"
-STRUCTURED_EXTRACTION_SYSTEM_PROMPT = """You extract structured business information from cleaned meeting transcripts.
+STRUCTURED_EXTRACTION_SYSTEM_PROMPT = """You are an expert in the agribusiness value chain, from field production to export and commercialization.
+
+You analyze meeting transcripts to extract structured business knowledge.
+
+You deeply understand:
+- agricultural operations
+- financial and strategic decision-making
+- inefficiencies in processes and data
+- how lack of information impacts decisions
+
+Your goal is not only to detect explicit pain points, but to identify underlying business problems and relevant themes discussed in the conversation.
 
 Return valid JSON only.
-Do not include markdown fences, explanations, or extra keys.
-Keep the extracted items concise and faithful to the transcript.
+Do not include markdown, explanations, or extra text.
 """
-PAIN_EXTRACTION_TASK_PROMPT = """You are analyzing a meeting transcript.
+EXTRACTION_TASK_PROMPT = """You are analyzing a meeting transcript from the agribusiness sector.
 
-Your task is to identify concrete pain points, frustrations, bottlenecks, or unmet needs explicitly or implicitly mentioned in the conversation.
+Your task is to extract:
 
-Return a JSON object with exactly this structure:
-{"dolores": ["pain 1", "pain 2"]}
+1) Pain points (dolores)
+2) Relevant business themes discussed in the conversation
 
-Rules:
-- Include only pains grounded in the transcript (do not invent or infer beyond the text)
-- Write all pain points in Spanish
-- Each pain must be clear, specific, and written as a normalized statement (not raw quotes)
-- Avoid filler words or conversational language
-- Do not repeat similar pains (deduplicate when necessary)
-- If no pain points are present, return: {"dolores": []}
+Return a JSON object with this exact structure:
+{
+  "dolores": ["..."],
+  "temas_clave": ["..."]
+}
+
+Rules for "dolores":
+- Identify both explicit and implicit pains
+- Focus on:
+  - decision-making difficulties
+  - lack or fragmentation of information
+  - operational inefficiencies
+  - manual or non-automated processes
+  - commercial and strategic uncertainty
+- Each pain must:
+  - be written in Spanish
+  - be specific and slightly explanatory (1 short sentence max)
+  - describe the problem clearly (not just a keyword)
+- Do NOT propose solutions
+- Do NOT repeat similar pains
+
+Rules for "temas_clave":
+- Capture important business topics even if they are not strictly "pain"
+- Examples:
+  - market cycles
+  - crop potential
+  - industry dynamics
+  - decision frameworks
+- Keep them short but meaningful
+
+General rules:
+- Stay grounded in the transcript (do not invent facts)
+- Prefer slightly richer descriptions over overly short phrases
+- If no pains are found, return {"dolores": [], "temas_clave": []}
 
 Output constraints:
 - Return ONLY valid JSON
-- Do not include explanations, comments, or additional text
+- No explanations, no extra text
 """
 
 
@@ -88,24 +124,32 @@ def _parse_structured_response(content: str) -> dict[str, list[str]]:
     if not isinstance(payload, dict):
         raise RuntimeError("Structured extraction output must be a JSON object.")
 
-    pains = payload.get("dolores", [])
-    if not isinstance(pains, list):
-        raise RuntimeError('Structured extraction output must include a "dolores" list.')
+    def normalize_list(value: object, field_name: str) -> list[str]:
+        if not isinstance(value, list):
+            raise RuntimeError(
+                f'Structured extraction output must include a "{field_name}" list.'
+            )
+        return [str(item).strip() for item in value if str(item).strip()]
 
-    normalized_pains = [str(item).strip() for item in pains if str(item).strip()]
-    return {"dolores": normalized_pains}
+    pains = payload.get("dolores", [])
+    topics = payload.get("temas_clave", payload.get("temas clave", []))
+
+    return {
+        "dolores": normalize_list(pains, "dolores"),
+        "temas_clave": normalize_list(topics, "temas_clave"),
+    }
 
 
 def extract_structured_fields(
     transcript_text: str,
     *,
     system_prompt: str = STRUCTURED_EXTRACTION_SYSTEM_PROMPT,
-    task_prompt: str = PAIN_EXTRACTION_TASK_PROMPT,
+    task_prompt: str = EXTRACTION_TASK_PROMPT,
     model: str | None = None,
 ) -> dict[str, list[str]]:
     """Extract structured fields from a single transcript using a configurable prompt."""
     if not transcript_text.strip():
-        return {"dolores": []}
+        return {"dolores": [], "temas_clave": []}
 
     client = create_openai_client()
     resolved_model = model or get_structured_extraction_model()
@@ -133,7 +177,7 @@ def extract_structured_data(
     input_dir: str | Path = DEFAULT_TRANSCRIPTS_DIR,
     *,
     system_prompt: str = STRUCTURED_EXTRACTION_SYSTEM_PROMPT,
-    task_prompt: str = PAIN_EXTRACTION_TASK_PROMPT,
+    task_prompt: str = EXTRACTION_TASK_PROMPT,
     model: str | None = None,
 ) -> list[dict[str, object]]:
     """Extract meeting-level structured data from all cleaned transcripts in a directory."""
@@ -156,6 +200,7 @@ def extract_structured_data(
             {
                 "reunion": transcript_path.stem,
                 "dolores": extracted_fields["dolores"],
+                "temas_clave": extracted_fields["temas_clave"],
             }
         )
 

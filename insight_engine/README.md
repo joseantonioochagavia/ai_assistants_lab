@@ -9,6 +9,7 @@ The `insight_engine` module is designed to:
 
 - consume cleaned transcripts produced by `meeting_assistant`
 - extract pains, friction points, and unmet needs from each meeting
+- extract relevant business themes discussed in each meeting
 - identify recurring patterns across multiple conversations
 - generate product ideas or AI agent concepts grounded in those patterns
 
@@ -57,6 +58,10 @@ Example output:
     "dolores": [
       "Mucho trabajo manual",
       "Falta de trazabilidad"
+    ],
+    "temas_clave": [
+      "Trazabilidad",
+      "Procesos manuales"
     ]
   }
 ]
