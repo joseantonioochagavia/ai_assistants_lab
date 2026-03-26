@@ -3,3 +3,6 @@ python-dotenv
 pydub
 fastapi
 uvicorn
+pandas
+gspread
+google-auth

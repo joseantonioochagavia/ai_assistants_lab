@@ -35,7 +35,7 @@ The two modules cover different parts of the workflow:
 
 ## CLI Usage
 
-The current CLI reads cleaned transcript markdown files and prints a structured JSON list to stdout.
+Stage 1 reads cleaned transcript markdown files and prints a structured JSON list to stdout.
 
 Run it with the default cleaned transcripts directory:
 
@@ -67,4 +67,35 @@ Example output:
 ]
 ```
 
-This command requires `OPENAI_API_KEY` to be set. You can optionally configure `OPENAI_DATA_EXTRACTION_MODE`; otherwise the module uses `gpt-4.1-mini`.
+This command requires `OPENAI_API_KEY` to be set. You can optionally configure `OPENAI_DATA_EXTRACTION_MODEL`; otherwise the module uses `gpt-4.1-mini`.
+
+Stage 2 builds the final insight table with semantic deduplication plus LLM enrichment:
+
+```bash
+python -m insight_engine.insight_engine
+```
+
+You can also point it to a JSON file produced by stage 1:
+
+```bash
+python -m insight_engine.insight_engine path/to/structured_data.json
+```
+
+To export the resulting dataframe to Google Sheets:
+
+```bash
+python -m insight_engine.insight_engine --export-google-sheet --worksheet-name Sheet1
+```
+
+Relevant environment variables:
+
+- `OPENAI_API_KEY`
+- `OPENAI_DATA_EXTRACTION_MODEL` for stage 1
+- `OPENAI_MODEL_INSIGHT_ENGINE` for stage 2 enrichment
+- `OPENAI_EMBEDDING_MODEL` for semantic deduplication
+- `INSIGHT_CATEGORY_OPTIONS` for the allowed categories, either inline text, JSON, or a local file path
+- `INSIGHT_SYSTEM_PROMPT` for the enrichment system prompt, either inline text or a local file path
+- `INSIGHT_TASK_PROMPT` for the enrichment task prompt, either inline text or a local file path
+- `INSIGHT_ENGINE_COMPANY_CONTEXT` to guide ideas and KPIs, either as inline text or a local file path
+- `GOOGLE_SHEETS_SPREADSHEET_ID` for export
+- `GOOGLE_SERVICE_ACCOUNT_JSON_PATH` for export
