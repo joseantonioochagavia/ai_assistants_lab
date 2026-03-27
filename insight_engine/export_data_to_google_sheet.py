@@ -48,14 +48,44 @@ def get_google_sheets_client(service_account_json_path: str | None = None) -> An
         raise RuntimeError(f"Google Sheets authentication failed: {exc}") from exc
 
 
-def _get_or_create_worksheet(spreadsheet: Any, worksheet_name: str) -> Any:
-    if worksheet_name == DEFAULT_WORKSHEET_NAME:
-        return spreadsheet.sheet1
-
+def _worksheet_has_content(worksheet: Any) -> bool:
     try:
-        return spreadsheet.worksheet(worksheet_name)
+        values = worksheet.get_all_values()
     except Exception:
-        return spreadsheet.add_worksheet(title=worksheet_name, rows=1000, cols=26)
+        return False
+
+    return any(any(str(cell).strip() for cell in row) for row in values)
+
+
+def _build_unique_worksheet_name(spreadsheet: Any, base_name: str) -> str:
+    existing_titles = {worksheet.title for worksheet in spreadsheet.worksheets()}
+    if base_name not in existing_titles:
+        return base_name
+
+    suffix = 2
+    while True:
+        candidate = f"{base_name}_{suffix}"
+        if candidate not in existing_titles:
+            return candidate
+        suffix += 1
+
+
+def _get_or_create_worksheet(spreadsheet: Any, worksheet_name: str) -> tuple[Any, str]:
+    if worksheet_name == DEFAULT_WORKSHEET_NAME:
+        worksheet = spreadsheet.sheet1
+    else:
+        try:
+            worksheet = spreadsheet.worksheet(worksheet_name)
+        except Exception:
+            worksheet = spreadsheet.add_worksheet(title=worksheet_name, rows=1000, cols=26)
+            return worksheet, worksheet_name
+
+    if not _worksheet_has_content(worksheet):
+        return worksheet, worksheet.title
+
+    new_worksheet_name = _build_unique_worksheet_name(spreadsheet, worksheet_name)
+    new_worksheet = spreadsheet.add_worksheet(title=new_worksheet_name, rows=1000, cols=26)
+    return new_worksheet, new_worksheet_name
 
 
 def export_dataframe_to_google_sheet(
@@ -64,8 +94,8 @@ def export_dataframe_to_google_sheet(
     worksheet_name: str = DEFAULT_WORKSHEET_NAME,
     spreadsheet_id: str | None = None,
     service_account_json_path: str | None = None,
-) -> None:
-    """Clear the target worksheet and write headers plus dataframe rows."""
+) -> str:
+    """Write dataframe rows to an empty worksheet, creating a new sheet if needed."""
     resolved_spreadsheet_id = spreadsheet_id or get_env(
         "GOOGLE_SHEETS_SPREADSHEET_ID",
         required=True,
@@ -74,12 +104,16 @@ def export_dataframe_to_google_sheet(
 
     try:
         spreadsheet = client.open_by_key(extract_spreadsheet_key(resolved_spreadsheet_id))
-        worksheet = _get_or_create_worksheet(spreadsheet, worksheet_name)
+        worksheet, resolved_worksheet_name = _get_or_create_worksheet(spreadsheet, worksheet_name)
 
         values = [list(dataframe.columns)]
         values.extend(dataframe.fillna("").astype(str).values.tolist())
 
-        worksheet.clear()
         worksheet.update("A1", values)
     except Exception as exc:
         raise RuntimeError(f"Failed to export dataframe to Google Sheets: {exc}") from exc
+
+    return (
+        "Google Sheets export completed successfully "
+        f"({len(dataframe)} rows, {len(dataframe.columns)} columns, worksheet: {resolved_worksheet_name})."
+    )

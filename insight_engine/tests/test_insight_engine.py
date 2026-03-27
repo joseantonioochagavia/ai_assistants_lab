@@ -204,7 +204,7 @@ class DataframeAndCliTests(unittest.TestCase):
 
     @patch.object(insight_engine, "build_insight_dataframe")
     @patch.object(insight_engine, "load_structured_data")
-    def test_main_prints_markdown_table(
+    def test_main_prints_success_message(
         self,
         load_structured_data_mock: MagicMock,
         build_dataframe_mock: MagicMock,
@@ -232,7 +232,7 @@ class DataframeAndCliTests(unittest.TestCase):
             exit_code = insight_engine.main()
 
         self.assertEqual(0, exit_code)
-        self.assertIn("Dolor consolidado", stdout.getvalue())
+        self.assertIn("Dataframe was generated successfully.", stdout.getvalue())
 
 
 class ExportTests(unittest.TestCase):
@@ -261,7 +261,10 @@ class ExportTests(unittest.TestCase):
             ]
         )
         worksheet_mock = MagicMock()
+        worksheet_mock.title = "Sheet1"
+        worksheet_mock.get_all_values.return_value = []
         spreadsheet_mock = MagicMock(sheet1=worksheet_mock)
+        spreadsheet_mock.worksheets.return_value = [worksheet_mock]
         client_mock = MagicMock()
         client_mock.open_by_key.return_value = spreadsheet_mock
 
@@ -270,16 +273,59 @@ class ExportTests(unittest.TestCase):
             "get_google_sheets_client",
             return_value=client_mock,
         ):
-            export_data_to_google_sheet.export_dataframe_to_google_sheet(
+            summary = export_data_to_google_sheet.export_dataframe_to_google_sheet(
                 dataframe,
                 spreadsheet_id="https://docs.google.com/spreadsheets/d/abc123/edit#gid=0",
             )
 
-        worksheet_mock.clear.assert_called_once()
+        worksheet_mock.clear.assert_not_called()
         worksheet_mock.update.assert_called_once()
         update_args = worksheet_mock.update.call_args[0]
         self.assertEqual("A1", update_args[0])
         self.assertEqual("Categoria", update_args[1][0][0])
+        self.assertIn("Google Sheets export completed successfully", summary)
+        self.assertIn("worksheet: Sheet1", summary)
+
+    def test_export_dataframe_to_google_sheet_creates_new_sheet_when_target_has_content(self) -> None:
+        import pandas as pd
+
+        dataframe = pd.DataFrame(
+            [
+                {
+                    "Categoria": "Information and visibility for decision-making",
+                    "Dolores": "Dolor consolidado",
+                    "ideas": "Idea 1",
+                    "kpi_medicion": "KPI 1",
+                    "Fuentes": "Excel",
+                    "Tiempo_estimado": "3 to 6 weeks",
+                }
+            ]
+        )
+        existing_sheet_mock = MagicMock()
+        existing_sheet_mock.title = "Sheet1"
+        existing_sheet_mock.get_all_values.return_value = [["Categoria", "Dolores"]]
+        new_sheet_mock = MagicMock()
+        new_sheet_mock.title = "Sheet1_2"
+        spreadsheet_mock = MagicMock(sheet1=existing_sheet_mock)
+        spreadsheet_mock.worksheets.return_value = [existing_sheet_mock]
+        spreadsheet_mock.add_worksheet.return_value = new_sheet_mock
+        client_mock = MagicMock()
+        client_mock.open_by_key.return_value = spreadsheet_mock
+
+        with patch.object(
+            export_data_to_google_sheet,
+            "get_google_sheets_client",
+            return_value=client_mock,
+        ):
+            summary = export_data_to_google_sheet.export_dataframe_to_google_sheet(
+                dataframe,
+                spreadsheet_id="https://docs.google.com/spreadsheets/d/abc123/edit#gid=0",
+            )
+
+        spreadsheet_mock.add_worksheet.assert_called_once_with(title="Sheet1_2", rows=1000, cols=26)
+        existing_sheet_mock.update.assert_not_called()
+        new_sheet_mock.update.assert_called_once()
+        self.assertIn("worksheet: Sheet1_2", summary)
 
 
 if __name__ == "__main__":

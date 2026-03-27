@@ -606,13 +606,16 @@ def main() -> int:
     try:
         structured_data = load_structured_data(args.input_path)
         dataframe = build_insight_dataframe(structured_data)
-        print(dataframe.to_string(index=False))
+        print("Dataframe was generated successfully.")
 
         if args.export_google_sheet:
             from insight_engine.export_data_to_google_sheet import export_dataframe_to_google_sheet
 
-            export_dataframe_to_google_sheet(dataframe, worksheet_name=args.worksheet_name)
-            print(f"\nExported to Google Sheets worksheet: {args.worksheet_name}")
+            export_summary = export_dataframe_to_google_sheet(
+                dataframe,
+                worksheet_name=args.worksheet_name,
+            )
+            print(export_summary)
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         raise SystemExit(str(exc)) from exc
 
