@@ -202,18 +202,18 @@ class DataframeAndCliTests(unittest.TestCase):
             dataframe.iloc[0]["Categoria"],
         )
 
-    @patch.object(insight_engine, "build_insight_dataframe")
+    @patch.object(insight_engine, "build_refined_insight_dataframe")
     @patch.object(insight_engine, "load_structured_data")
     def test_main_prints_success_message(
         self,
         load_structured_data_mock: MagicMock,
-        build_dataframe_mock: MagicMock,
+        build_refined_dataframe_mock: MagicMock,
     ) -> None:
         import pandas as pd
 
         stdout = io.StringIO()
         load_structured_data_mock.return_value = [{"reunion": "A", "dolores": ["x"]}]
-        build_dataframe_mock.return_value = pd.DataFrame(
+        build_refined_dataframe_mock.return_value = pd.DataFrame(
             [
                 {
                     "Categoria": "Information and visibility for decision-making",
@@ -233,6 +233,44 @@ class DataframeAndCliTests(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertIn("Dataframe was generated successfully.", stdout.getvalue())
+
+    @patch("insight_engine.export_data_to_google_sheet.export_dataframe_to_google_sheet")
+    @patch.object(insight_engine, "build_refined_insight_dataframe")
+    @patch.object(insight_engine, "load_structured_data")
+    def test_main_exports_refined_dataframe(
+        self,
+        load_structured_data_mock: MagicMock,
+        build_refined_dataframe_mock: MagicMock,
+        export_dataframe_mock: MagicMock,
+    ) -> None:
+        import pandas as pd
+
+        refined_dataframe = pd.DataFrame(
+            [
+                {
+                    "Categoria": "Information and visibility for decision-making",
+                    "Dolores": "Dolor refinado",
+                    "ideas": "Idea refinada",
+                    "kpi_medicion": "KPI refinado",
+                    "Fuentes": "Excel",
+                    "Tiempo_estimado": "3 to 6 weeks",
+                }
+            ]
+        )
+        load_structured_data_mock.return_value = [{"reunion": "A", "dolores": ["x"]}]
+        build_refined_dataframe_mock.return_value = refined_dataframe
+        export_dataframe_mock.return_value = "ok"
+
+        with patch(
+            "sys.argv",
+            ["insight_engine.insight_engine", "/tmp/input.json", "--export-google-sheet"],
+        ):
+            exit_code = insight_engine.main()
+
+        self.assertEqual(0, exit_code)
+        export_dataframe_mock.assert_called_once()
+        exported_dataframe = export_dataframe_mock.call_args.args[0]
+        self.assertTrue(exported_dataframe.equals(refined_dataframe))
 
 
 class ExportTests(unittest.TestCase):

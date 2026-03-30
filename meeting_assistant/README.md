@@ -45,23 +45,29 @@ Chunked transcription uses `pydub` for audio loading and splitting. For formats 
 ## Example Usage
 
 ```bash
-python -m meeting_assistant.app path/to/audio.mp3
+make transcribe AUDIO_FILES="path/to/audio.mp3"
 ```
 
 ```bash
-python -m meeting_assistant.app path/to/audio.mp3 --debug
+make transcribe AUDIO_FILES="path/to/audio.mp3" DEBUG_MODE=1
 ```
 
 To transcribe multiple recordings in one command, pass a list of files. If the files are already stored in `meeting_assistant/audios`, you can use their names directly:
 
 ```bash
-python -m meeting_assistant.app "Chico Ureta.m4a" "Piter Moura.m4a"
+make transcribe AUDIO_FILES="Chico Ureta.m4a|Piter Moura.m4a"
 ```
 
 You can also control how many files run concurrently:
 
 ```bash
-python -m meeting_assistant.app "Chico Ureta.m4a" "Piter Moura.m4a" --workers 2
+make transcribe AUDIO_FILES="Chico Ureta.m4a|Piter Moura.m4a" WORKERS=2
 ```
 
 The command saves the raw transcription to `meeting_assistant/outputs/transcripts/raw/<audio-file-name>.md`, the cleaned transcription to `meeting_assistant/outputs/transcripts/clean/<audio-file-name>.md`, and when `--debug` is enabled it writes a step-by-step artifact tree under `meeting_assistant/outputs/transcripts/debug/<audio-file-name>/`.
+
+If you want to continue directly from audio files to the final Google Sheet update, use the orchestration command in the insight module:
+
+```bash
+make full-pipeline AUDIO_FILES="Chico Ureta.m4a|Piter Moura.m4a" WORKSHEET_NAME=Sheet1
+```

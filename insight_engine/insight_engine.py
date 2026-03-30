@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Sequence
 from common.config import get_env
 from common.llm_clients import create_openai_client
 from insight_engine.data_extraction import DEFAULT_TRANSCRIPTS_DIR, extract_structured_data
+from insight_engine.refinement_engine import get_refinement_metadata, refine_insight_dataframe
 
 
 if TYPE_CHECKING:
@@ -560,6 +561,27 @@ def build_insight_dataframe(
     return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
 
 
+def build_refined_insight_dataframe(
+    structured_data: Sequence[dict[str, object]],
+    *,
+    client: Any | None = None,
+    embedding_model: str | None = None,
+    insight_model: str | None = None,
+    company_context: str | None = None,
+    similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+) -> "pd.DataFrame":
+    """Build and refine the insight dataframe expected by downstream export steps."""
+    dataframe = build_insight_dataframe(
+        structured_data,
+        client=client,
+        embedding_model=embedding_model,
+        insight_model=insight_model,
+        company_context=company_context,
+        similarity_threshold=similarity_threshold,
+    )
+    return refine_insight_dataframe(dataframe)
+
+
 def load_structured_data(input_path: str | Path) -> list[dict[str, object]]:
     """Load structured data either from a JSON file or by extracting it from transcripts."""
     resolved_path = Path(input_path)
@@ -605,14 +627,22 @@ def main() -> int:
 
     try:
         structured_data = load_structured_data(args.input_path)
-        dataframe = build_insight_dataframe(structured_data)
+        refined_dataframe = build_refined_insight_dataframe(structured_data)
         print("Dataframe was generated successfully.")
+
+        refinement_metadata = get_refinement_metadata(refined_dataframe)
+        if refinement_metadata.get("scores"):
+            scores = " -> ".join(str(score) for score in refinement_metadata["scores"])
+            print(
+                "Refinement completed successfully "
+                f"(scores: {scores}, best: {refinement_metadata['best_score']})."
+            )
 
         if args.export_google_sheet:
             from insight_engine.export_data_to_google_sheet import export_dataframe_to_google_sheet
 
             export_summary = export_dataframe_to_google_sheet(
-                dataframe,
+                refined_dataframe,
                 worksheet_name=args.worksheet_name,
             )
             print(export_summary)

@@ -103,6 +103,48 @@ class DataExtractionTests(unittest.TestCase):
         )
         self.assertEqual(2, extract_mock.call_count)
 
+    def test_extract_structured_data_from_files_preserves_input_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            first_transcript = temp_path / "First Meeting.md"
+            second_transcript = temp_path / "Second Meeting.md"
+            first_transcript.write_text(
+                "# Transcription\n\nSource file: first.mp3\n\n---\n\nTexto 1",
+                encoding="utf-8",
+            )
+            second_transcript.write_text(
+                "# Transcription\n\nSource file: second.mp3\n\n---\n\nTexto 2",
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                data_extraction,
+                "extract_structured_fields",
+                side_effect=[
+                    {"dolores": ["Dolor 2"], "temas_clave": ["Tema 2"]},
+                    {"dolores": ["Dolor 1"], "temas_clave": ["Tema 1"]},
+                ],
+            ):
+                structured_data = data_extraction.extract_structured_data_from_files(
+                    [second_transcript, first_transcript]
+                )
+
+        self.assertEqual(
+            [
+                {
+                    "reunion": "Second Meeting",
+                    "dolores": ["Dolor 2"],
+                    "temas_clave": ["Tema 2"],
+                },
+                {
+                    "reunion": "First Meeting",
+                    "dolores": ["Dolor 1"],
+                    "temas_clave": ["Tema 1"],
+                },
+            ],
+            structured_data,
+        )
+
     def test_main_prints_structured_json(self) -> None:
         stdout = io.StringIO()
 

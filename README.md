@@ -4,14 +4,28 @@ A public Python repository for small, modular AI assistants focused on workflow 
 
 ## Current Status
 
-The repository now includes a working first transcription flow for the `meeting_assistant` module using the OpenAI API. Audio is lightly preprocessed before transcription, longer recordings are split into chunks, raw transcripts are cleaned into readable text, and both versions are saved as markdown.
+The repository includes a working transcription flow for `meeting_assistant` and a multi-stage `insight_engine` pipeline. Audio is lightly preprocessed before transcription, longer recordings are split into chunks, raw transcripts are cleaned into readable text, and the downstream insight flow extracts pains, builds an actionable table, and refines that table with an iterative verifier/refiner loop before export.
 
 ## Repository Structure
 
 - `common/`: shared configuration helpers and OpenAI client creation
 - `meeting_assistant/`: the first assistant module, currently focused on transcription
+- `insight_engine/`: structured extraction, insight enrichment, iterative refinement, and Google Sheets export
 - `docs/prompts/`: prompt files used to drive repository iterations
 - `scripts/`: setup helpers for local development
+
+## Local Folders
+
+These folders are part of the working setup but are ignored by git or generated locally:
+
+- `meeting_assistant/audios/`: place source audio files here if you want to organize local inputs
+- `meeting_assistant/outputs/`: generated transcripts and debug artifacts are written here at runtime
+- `meeting_assistant/outputs/transcripts/raw/`: raw transcript markdown output
+- `meeting_assistant/outputs/transcripts/clean/`: cleaned transcript markdown output
+- `meeting_assistant/outputs/transcripts/debug/`: chunk-level and merged debug output
+- `insight_engine/docs/private/`: prompt files, sample CSVs, and local refinement/enrichment context
+- `data/`: optional local data area for experiments or scratch inputs
+- `notebooks/`: optional local analysis notebooks
 
 ## Setup
 
@@ -37,6 +51,7 @@ Create a local `.env` file based on `.env.example` and set:
 - `INSIGHT_CATEGORY_OPTIONS` (optional, accepts inline text, JSON, or a local text-file path)
 - `INSIGHT_SYSTEM_PROMPT` (optional, accepts inline text or a local text-file path)
 - `INSIGHT_TASK_PROMPT` (optional, accepts inline text or a local text-file path)
+- `REFINEMENT_SYSTEM_PROMPT` (optional, accepts inline text or a local text-file path for the verifier/refiner loop)
 - `INSIGHT_ENGINE_COMPANY_CONTEXT` (optional, accepts inline text or a local text-file path such as `insight_engine/docs/private/company_context.txt`)
 - `GOOGLE_SHEETS_SPREADSHEET_ID` (required only for Google Sheets export)
 - `GOOGLE_SERVICE_ACCOUNT_JSON_PATH` (required only for Google Sheets export)
@@ -61,52 +76,56 @@ Current behavior:
 Example:
 
 ```bash
-python -m meeting_assistant.app path/to/audio.m4a
+make transcribe AUDIO_FILES="path/to/audio.m4a"
 ```
 
 ## Insight Engine
 
-The `insight_engine` module supports two stages:
+The `insight_engine` module supports three main steps:
 
 - `insight_engine.data_extraction`: reads cleaned transcripts and extracts meeting-level pain points plus themes
-- `insight_engine.insight_engine`: deduplicates pain points semantically, enriches them into actionable solutions, and returns the final insight table as a pandas DataFrame
+- `insight_engine.insight_engine`: deduplicates pain points semantically, enriches them into actionable solutions, runs iterative table refinement, and returns the best insight table as a pandas DataFrame
+- `insight_engine.full_pipeline`: runs the full flow from selected audio files through Google Sheets export
+- `insight_engine.refinement_engine`: internal helper module used by `insight_engine.insight_engine` for verifier/refiner scoring and table refinement
 
 Example:
 
 ```bash
-python -m insight_engine.data_extraction
+make insight
 ```
 
 You can also point it to a specific transcript directory:
 
 ```bash
-python -m insight_engine.data_extraction meeting_assistant/outputs/transcripts/clean
-```
-
-To build the final insight table directly from cleaned transcripts:
-
-```bash
-python -m insight_engine.insight_engine
+make extract INPUT_PATH=meeting_assistant/outputs/transcripts/clean
 ```
 
 You can also point the final stage to a JSON file produced by `insight_engine.data_extraction`:
 
 ```bash
-python -m insight_engine.insight_engine path/to/structured_data.json
+make insight INPUT_PATH=path/to/structured_data.json
 ```
 
 To export the resulting table to Google Sheets:
 
 ```bash
-python -m insight_engine.insight_engine --export-google-sheet --worksheet-name Sheet1
+make insight EXPORT_GOOGLE_SHEET=1 WORKSHEET_NAME=Sheet1
 ```
+
+To run the full flow from one or more audio files directly into Google Sheets:
+
+```bash
+make full-pipeline AUDIO_FILES="audio1.m4a|audio2.m4a" WORKSHEET_NAME=Sheet1 WORKERS=2
+```
+
+This command transcribes only the audio files you pass in, extracts structured pains from only those cleaned transcripts, builds and refines the insight table, and then exports the final result to the configured spreadsheet.
 
 ## Tests
 
 The repository includes lightweight unit tests for the transcription and insight flows. Run them with:
 
 ```bash
-python -m unittest
+make test
 ```
 
 ## Direction

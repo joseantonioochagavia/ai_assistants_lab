@@ -10,5 +10,6 @@ meeting_assistant/outputs/
 notebooks/
 ai-assistants-lab-491415-26f0eeb6a014.json
 docs/prompts/insight_engine_main_app.md
+docs/prompts/insight_engine_refinement_loop.md
 insight_engine/docs/private/
     

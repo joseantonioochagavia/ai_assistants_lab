@@ -186,9 +186,29 @@ def extract_structured_data(
     if not transcripts_dir.is_dir():
         raise FileNotFoundError(f"Transcript directory not found: {transcripts_dir}")
 
+    return extract_structured_data_from_files(
+        sorted(transcripts_dir.glob("*.md")),
+        system_prompt=system_prompt,
+        task_prompt=task_prompt,
+        model=model,
+    )
+
+
+def extract_structured_data_from_files(
+    transcript_paths: list[str | Path],
+    *,
+    system_prompt: str = STRUCTURED_EXTRACTION_SYSTEM_PROMPT,
+    task_prompt: str = EXTRACTION_TASK_PROMPT,
+    model: str | None = None,
+) -> list[dict[str, object]]:
+    """Extract meeting-level structured data from a specific list of cleaned transcript files."""
     structured_data: list[dict[str, object]] = []
 
-    for transcript_path in sorted(transcripts_dir.glob("*.md")):
+    for raw_transcript_path in transcript_paths:
+        transcript_path = Path(raw_transcript_path)
+        if not transcript_path.is_file():
+            raise FileNotFoundError(f"Transcript file not found: {transcript_path}")
+
         transcript_text = read_transcript_markdown(transcript_path)
         extracted_fields = extract_structured_fields(
             transcript_text,

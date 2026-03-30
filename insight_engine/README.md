@@ -40,13 +40,13 @@ Stage 1 reads cleaned transcript markdown files and prints a structured JSON lis
 Run it with the default cleaned transcripts directory:
 
 ```bash
-python -m insight_engine.data_extraction
+make extract
 ```
 
 Run it against a specific directory:
 
 ```bash
-python -m insight_engine.data_extraction meeting_assistant/outputs/transcripts/clean
+make extract INPUT_PATH=meeting_assistant/outputs/transcripts/clean
 ```
 
 Example output:
@@ -69,33 +69,66 @@ Example output:
 
 This command requires `OPENAI_API_KEY` to be set. You can optionally configure `OPENAI_DATA_EXTRACTION_MODEL`; otherwise the module uses `gpt-4.1-mini`.
 
-Stage 2 builds the final insight table with semantic deduplication plus LLM enrichment:
+Stage 2 builds the insight table with semantic deduplication, LLM enrichment, and an iterative verifier/refiner loop that returns the best-scoring version:
 
 ```bash
-python -m insight_engine.insight_engine
+make insight
 ```
 
 You can also point it to a JSON file produced by stage 1:
 
 ```bash
-python -m insight_engine.insight_engine path/to/structured_data.json
+make insight INPUT_PATH=path/to/structured_data.json
 ```
 
 To export the resulting dataframe to Google Sheets:
 
 ```bash
-python -m insight_engine.insight_engine --export-google-sheet --worksheet-name Sheet1
+make insight EXPORT_GOOGLE_SHEET=1 WORKSHEET_NAME=Sheet1
 ```
+
+The `insight_engine.insight_engine` command now refines the generated table before export. Refinement metadata, including per-iteration scores, is stored in `dataframe.attrs["refinement_metadata"]`.
+
+The refinement loop is intentionally conservative about information loss, but aggressive about semantic duplication:
+
+- the verifier scores the table, penalizes duplicate business pains, and returns explicit `merge_candidates`
+- the refiner applies high-confidence merges unless important information would be lost
+- the loop runs for at most 3 iterations and returns the best-scoring version, not necessarily the last one
+
+## Full Pipeline CLI
+
+If you want one command from audio files to the Google Sheet, use:
+
+```bash
+make full-pipeline AUDIO_FILES="Chico Ureta.m4a|Piter Moura.m4a" WORKSHEET_NAME=Sheet1 WORKERS=2
+```
+
+This command:
+
+- transcribes only the audio files passed on the command line
+- reads only the cleaned transcripts generated from those files
+- extracts structured pains and themes
+- builds and refines the final table
+- exports the refined table to Google Sheets
+
+Useful options:
+
+- `--worksheet-name` to choose the worksheet
+- `--workers` to control concurrent transcription
+- `--debug` to persist transcription debug artifacts
+- `--spreadsheet-id` to override `GOOGLE_SHEETS_SPREADSHEET_ID`
+- `--service-account-json-path` to override `GOOGLE_SERVICE_ACCOUNT_JSON_PATH`
 
 Relevant environment variables:
 
 - `OPENAI_API_KEY`
 - `OPENAI_DATA_EXTRACTION_MODEL` for stage 1
-- `OPENAI_MODEL_INSIGHT_ENGINE` for stage 2 enrichment
+- `OPENAI_MODEL_INSIGHT_ENGINE` for stage 2 enrichment and stage 3 refinement
 - `OPENAI_EMBEDDING_MODEL` for semantic deduplication
 - `INSIGHT_CATEGORY_OPTIONS` for the allowed categories, either inline text, JSON, or a local file path
 - `INSIGHT_SYSTEM_PROMPT` for the enrichment system prompt, either inline text or a local file path
 - `INSIGHT_TASK_PROMPT` for the enrichment task prompt, either inline text or a local file path
+- `REFINEMENT_SYSTEM_PROMPT` for the shared verifier/refiner system prompt, either inline text or a local file path
 - `INSIGHT_ENGINE_COMPANY_CONTEXT` to guide ideas and KPIs, either as inline text or a local file path
 - `GOOGLE_SHEETS_SPREADSHEET_ID` for export
 - `GOOGLE_SERVICE_ACCOUNT_JSON_PATH` for export
