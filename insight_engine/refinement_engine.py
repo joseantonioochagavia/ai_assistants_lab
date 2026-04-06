@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from common.config import get_env
+from common.config import get_env, read_text_or_file
 from common.llm_clients import create_openai_client
 
 
@@ -110,29 +110,8 @@ def _load_pandas():
     return pd
 
 
-def _read_text_or_file(
-    configured_value: str,
-    *,
-    setting_name: str,
-    required: bool = False,
-) -> str:
-    configured_value = configured_value.strip()
-    if not configured_value:
-        if required:
-            raise RuntimeError(f"Missing required configuration: {setting_name}")
-        return ""
-
-    candidate_path = Path(configured_value).expanduser()
-    if not candidate_path.is_absolute():
-        candidate_path = REPO_ROOT / candidate_path
-
-    if candidate_path.is_file():
-        try:
-            return candidate_path.read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise RuntimeError(f"Failed to read {setting_name}: {exc}") from exc
-
-    return configured_value
+def _read_text_or_file(configured_value: str, *, setting_name: str, required: bool = False) -> str:
+    return read_text_or_file(configured_value, setting_name=setting_name, repo_root=REPO_ROOT, required=required)
 
 
 def _normalize_whitespace(value: str) -> str:

@@ -6,19 +6,22 @@ import argparse
 import json
 from pathlib import Path
 
-from common.config import get_env
+from common.config import get_env, read_text_or_file
 from common.llm_clients import create_openai_client
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TRANSCRIPTS_DIR = (
-    Path(__file__).resolve().parents[1]
+    REPO_ROOT
     / "meeting_assistant"
     / "outputs"
     / "transcripts"
     / "clean"
 )
 DEFAULT_EXTRACTION_MODEL = "gpt-4.1-mini"
-STRUCTURED_EXTRACTION_SYSTEM_PROMPT = """You are an expert in the agribusiness value chain, from field production to export and commercialization.
+DEFAULT_EXTRACTION_SYSTEM_PROMPT_PATH = "insight_engine/docs/private/extraction_system_prompt.txt"
+DEFAULT_EXTRACTION_TASK_PROMPT_PATH = "insight_engine/docs/private/extraction_task_prompt.txt"
+BUILTIN_EXTRACTION_SYSTEM_PROMPT = """You are an expert in the agribusiness value chain, from field production to export and commercialization.
 
 You analyze meeting transcripts to extract structured business knowledge.
 
@@ -33,7 +36,7 @@ Your goal is not only to detect explicit pain points, but to identify underlying
 Return valid JSON only.
 Do not include markdown, explanations, or extra text.
 """
-EXTRACTION_TASK_PROMPT = """You are analyzing a meeting transcript from the agribusiness sector.
+BUILTIN_EXTRACTION_TASK_PROMPT = """You are analyzing a meeting transcript from the agribusiness sector.
 
 Your task is to extract:
 
@@ -79,11 +82,45 @@ Output constraints:
 - Return ONLY valid JSON
 - No explanations, no extra text
 """
+_EXTRACTION_SYSTEM_PROMPT_ENV = (
+    get_env("EXTRACTION_SYSTEM_PROMPT", default=DEFAULT_EXTRACTION_SYSTEM_PROMPT_PATH)
+    or DEFAULT_EXTRACTION_SYSTEM_PROMPT_PATH
+)
+_EXTRACTION_TASK_PROMPT_ENV = (
+    get_env("EXTRACTION_TASK_PROMPT", default=DEFAULT_EXTRACTION_TASK_PROMPT_PATH)
+    or DEFAULT_EXTRACTION_TASK_PROMPT_PATH
+)
 
 
 def get_structured_extraction_model() -> str:
     """Return the configured model for insight extraction."""
     return get_env("OPENAI_DATA_EXTRACTION_MODEL", default=DEFAULT_EXTRACTION_MODEL) or DEFAULT_EXTRACTION_MODEL
+
+
+def get_extraction_system_prompt() -> str:
+    """Return the system prompt for data extraction.
+
+    Resolves in order: private file path, env var inline text, built-in default.
+    """
+    resolved = read_text_or_file(
+        _EXTRACTION_SYSTEM_PROMPT_ENV,
+        setting_name="EXTRACTION_SYSTEM_PROMPT",
+        repo_root=REPO_ROOT,
+    )
+    return resolved or BUILTIN_EXTRACTION_SYSTEM_PROMPT
+
+
+def get_extraction_task_prompt() -> str:
+    """Return the task prompt for data extraction.
+
+    Resolves in order: private file path, env var inline text, built-in default.
+    """
+    resolved = read_text_or_file(
+        _EXTRACTION_TASK_PROMPT_ENV,
+        setting_name="EXTRACTION_TASK_PROMPT",
+        repo_root=REPO_ROOT,
+    )
+    return resolved or BUILTIN_EXTRACTION_TASK_PROMPT
 
 
 def read_transcript_markdown(file_path: str | Path) -> str:
@@ -143,8 +180,8 @@ def _parse_structured_response(content: str) -> dict[str, list[str]]:
 def extract_structured_fields(
     transcript_text: str,
     *,
-    system_prompt: str = STRUCTURED_EXTRACTION_SYSTEM_PROMPT,
-    task_prompt: str = EXTRACTION_TASK_PROMPT,
+    system_prompt: str | None = None,
+    task_prompt: str | None = None,
     model: str | None = None,
 ) -> dict[str, list[str]]:
     """Extract structured fields from a single transcript using a configurable prompt."""
@@ -153,15 +190,17 @@ def extract_structured_fields(
 
     client = create_openai_client()
     resolved_model = model or get_structured_extraction_model()
+    resolved_system_prompt = system_prompt or get_extraction_system_prompt()
+    resolved_task_prompt = task_prompt or get_extraction_task_prompt()
 
     try:
         response = client.chat.completions.create(
             model=resolved_model,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": resolved_system_prompt},
                 {
                     "role": "user",
-                    "content": f"{task_prompt}\n\nTranscript:\n{transcript_text}",
+                    "content": f"{resolved_task_prompt}\n\nTranscript:\n{transcript_text}",
                 },
             ],
             temperature=0.2,
@@ -176,8 +215,8 @@ def extract_structured_fields(
 def extract_structured_data(
     input_dir: str | Path = DEFAULT_TRANSCRIPTS_DIR,
     *,
-    system_prompt: str = STRUCTURED_EXTRACTION_SYSTEM_PROMPT,
-    task_prompt: str = EXTRACTION_TASK_PROMPT,
+    system_prompt: str | None = None,
+    task_prompt: str | None = None,
     model: str | None = None,
 ) -> list[dict[str, object]]:
     """Extract meeting-level structured data from all cleaned transcripts in a directory."""
@@ -197,8 +236,8 @@ def extract_structured_data(
 def extract_structured_data_from_files(
     transcript_paths: list[str | Path],
     *,
-    system_prompt: str = STRUCTURED_EXTRACTION_SYSTEM_PROMPT,
-    task_prompt: str = EXTRACTION_TASK_PROMPT,
+    system_prompt: str | None = None,
+    task_prompt: str | None = None,
     model: str | None = None,
 ) -> list[dict[str, object]]:
     """Extract meeting-level structured data from a specific list of cleaned transcript files."""
