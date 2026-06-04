@@ -18,7 +18,7 @@ Copy `.env.example` to `.env` and fill in at minimum `OPENAI_API_KEY`. See READM
 
 ```bash
 # Transcription
-make transcribe AUDIO_FILES="file.m4a"
+make transcribe AUDIO_FILES="file.m4a" # it should be saved on "meeting_assistant/audios"
 make transcribe AUDIO_FILES="file1.m4a|file2.m4a" WORKERS=2 DEBUG_MODE=1
 
 # Insight pipeline
